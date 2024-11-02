@@ -1,5 +1,5 @@
 ---
-title: "Your Title"
+title: "Y30538 Problem Set 4"
 format: 
   pdf:
     keep-tex: true
@@ -27,8 +27,8 @@ Please refer to the minilesson on code style
 ## Submission Steps (10 pts)
 1. This problem set is a paired problem set.
 2. Play paper, scissors, rock to determine who goes first. Call that person *Partner 1*.
-    - Partner 1 (name and cnet ID):
-    - Partner 2 (name and cnet ID):
+    - Partner 1 (name and cnet ID): Betsy Shi
+    - Partner 2 (name and cnet ID): Joy Wu
 3. Partner 1 will accept the `ps4` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
 4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*\_\_\*\* \*\*\_\_\*\*
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
@@ -43,14 +43,78 @@ Please refer to the minilesson on code style
 
 ## Download and explore the Provider of Services (POS) file (10 pts)
 
-1. 
+1.
+Based on the rest of the problem set and the data dictionary, I pulled ZIP_CD, PGM_TRMNTN_CD, STATE_CD, PRVDR_NUM, FAC_NAME, CMPLNC_STUS_CD, CITY_NAME, PRVDR_CTGRY_CD, PRVDR_CTGRY_SBTYP_CD as variables.
+
+
 2. 
     a.
+```{python}
+import pandas as pd
+
+path = "data/pos2016.csv"
+df_2016 = pd.read_csv(path)
+
+short_term_hospitals = df_2016[(df_2016['PRVDR_CTGRY_CD'] == 1) & (df_2016['PRVDR_CTGRY_SBTYP_CD'] == 1)]
+
+num_short_term = short_term_hospitals.shape[0]
+print(num_short_term)
+```
+Yes, based on the pos2016 data and definitions, the number 7,245 is logical and consistent with the dataset’s criteria for short-term hospitals.
+
+
     b.
+Cross-reference with 2024 AHA HOSPITAL STATISTICS. The number of U.S. community hospitals in 2024 is 5,129.
+The gap may come from definition difference. The community hospitals in the research are defined as all nonfederal, short-term general, and other special hospitals. This does not fit the short-term designation in pos2016 dataset.
+And since 2016, there has been a trend of hospital closures, particularly in rural and less profitable areas. These closures could reduce the number of short-term facilities, meaning fewer hospitals are categorized as such in 2024.
+
+
 3. 
+```{python}
+import matplotlib.pyplot as plt
+
+years = [2016, 2017, 2018, 2019]
+data_frames = []
+
+for year in years:
+    
+    file_path = f'data/pos{year}.csv'
+    df = pd.read_csv(file_path, encoding='ISO-8859-1')
+    df['year'] = year
+    data_frames.append(df)
+
+data_all = pd.concat(data_frames, ignore_index=True)
+
+observation_by_year = data_all.groupby('year').size()
+
+observation_by_year.plot(kind='bar')
+plt.title('Number of Observations by Year')
+plt.xlabel('Year')
+plt.ylabel('Number of Observations')
+plt.xticks(rotation=0)
+plt.show()
+```
+
+
 4. 
     a.
+```{python}
+unique_hospital = data_all.groupby('year')['PRVDR_NUM'].nunique()
+
+unique_hospital.plot(kind='bar', color='pink')
+plt.title('Unique Hospitals by Year')
+plt.xlabel('Year')
+plt.ylabel('Number of Unique Hospitals')
+plt.xticks(rotation=0)
+plt.show()
+```
+
     b.
+The two plots are highly identical, having similar count each year from 2016 to 2019 wich each bar reaching 140,000.
+This suggests that each hospital only has one record each year, with no extra records or repeated entries. This consistency shows that the dataset is well organized.
+And since both the total number of observations an unique hospital counts are stable, there is no sigh of additional data collection periods within each year. This further supports that the deata is collected once a year.
+The high consistency between the two plots over time suggests that the data has high integrity, with no missing data or big changes in participants.
+
 
 ## Identify hospital closures in POS file (15 pts) (*)
 
@@ -65,13 +129,58 @@ Please refer to the minilesson on code style
 
 1. 
     a.
+.dbf is a database file which contains attribute data in a tabular format. Each record in it corresponds to a geographical feature.
+.prj is a projection file which defines the coordinate system and projection information for the shapefile.
+.shp is a shapefile which is the main file containing the geometry of each feature, including the spatial data that represent the shapes of geographical features.
+.shx is a shape index file which provides an index of the geonmetry in the .shp file, helping to improve the loading of spatial data.
+.xml is a metadata file which contains metadata and provides descriptive information about the dataset.
+
     b. 
+.dbf: 6.4 MB
+.prj: 165 bytes
+.shp: 837.5 MB
+.shx: 265 KB
+.xml: 16 KB
+As seen, the .shp file is the largest, the .shx file and .xml file are relatively small, and the .prj file is the smallest.
+
+
 2. 
+```{python}
+import geopandas as gpd
+
+filepath = "data/gz_2010_us_860_00_500k/gz_2010_us_860_00_500k.shp"
+data_zip = gpd.read_file(filepath)
+data_zip.head(100)
+```
+
 
 ## Calculate zip code’s distance to the nearest hospital (20 pts) (*)
 
 1. 
+```{python}
+data_zip['centroid'] = data_zip.geometry.centroid
+
+zips_all_centroids = gpd.GeoDataFrame(data_zip[['ZCTA5', 'centroid']], geometry='centroid', crs=data_zip.crs)
+
+print("Dimensions of zips_all_centroids:", zips_all_centroids.shape)
+print(zips_all_centroids.head(100))
+```
+The resulting GeoDataFrame has 33,120 rows and 2 columns.
+ZCTA5: it is a distinct ZIP code area in U.S.
+Centroid: it is a geometry column that contains the geographic center point of the zip code area as a point geometry. Each point represents the central location within the boundaries of this row's zip code polygon.
+
+
 2. 
+```{python}
+texas_prefixes = ('75', '76', '77', '78', '79')
+zips_texas_centroids = zips_all_centroids[zips_all_centroids['ZCTA5'].str.startswith(texas_prefixes)]
+num_texas_zip = zips_texas_centroids['ZCTA5'].nunique()
+print("The Number of unique zip codes in Texas:", num_texas_zip)
+
+
+
+```
+
 3. 
 4. 
     a.
@@ -81,6 +190,7 @@ Please refer to the minilesson on code style
     b.
     c.
     
+
 ## Effects of closures on access in Texas (15 pts)
 
 1. 
