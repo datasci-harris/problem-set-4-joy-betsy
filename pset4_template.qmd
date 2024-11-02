@@ -1,5 +1,5 @@
 ---
-title: "Your Title"
+title: "PSet 4"
 format: 
   pdf:
     keep-tex: true
@@ -26,13 +26,13 @@ Please refer to the minilesson on code style
 
 ## Submission Steps (10 pts)
 1. This problem set is a paired problem set.
-2. Play paper, scissors, rock to determine who goes first. Call that person *Partner 1*.
-    - Partner 1 (name and cnet ID):
-    - Partner 2 (name and cnet ID):
+2. Play paper, scissors, rock to determine who goes first. Call that person Betsy Shi.
+    - Partner 1 (name and cnet ID): Betsy Shi
+    - Partner 2 (name and cnet ID): Joy Wu
 3. Partner 1 will accept the `ps4` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
-4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*\_\_\*\* \*\*\_\_\*\*
+4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: BS JW
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
-6. Late coins used this pset: \*\*\_\_\*\* Late coins left after submission: \*\*\_\_\*\*
+6. Late coins used this pset: 0 Late coins left after submission: 3
 7. Knit your `ps4.qmd` to an PDF file to make `ps4.pdf`, 
     * The PDF should not be more than 25 pages. Use `head()` and re-size figures when appropriate. 
 8. (Partner 1): push  `ps4.qmd` and `ps4.pdf` to your github repo.
@@ -55,11 +55,132 @@ Please refer to the minilesson on code style
 ## Identify hospital closures in POS file (15 pts) (*)
 
 1. 
+```{python}
+data_all['PRVDR_NUM'] = pd.to_numeric(data_all['PRVDR_NUM'], errors='coerce')
+
+active_2016 = data_all[(data_all['year'] == 2016) & (data_all['PGM_TRMNTN_CD'] == 0)]
+active_2016 = active_2016[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD']]
+original_list = active_2016['PRVDR_NUM'].unique()
+
+closed_hospitals_list = []
+
+for year in [2017, 2018, 2019]:
+    # Active in current year
+    active_year = data_all[(data_all['year'] == year) & (data_all['PGM_TRMNTN_CD'] == 0)]
+    # Once appears in previous year
+    active_year = active_year[active_year['PRVDR_NUM'].isin(original_list)]
+    active_list_year = active_year['PRVDR_NUM'].unique()
+    
+    # Check active status
+    closed_in_year = active_2016[~active_2016['PRVDR_NUM'].isin(active_list_year)]
+    
+    # Identify and record closure 
+    closed_in_year = closed_in_year.copy()
+    closed_in_year['Suspected_Closure_Year'] = year
+    closed_hospitals_list.append(closed_in_year)
+
+    # Renew base
+    closed_list = closed_in_year['PRVDR_NUM'].unique()
+    original_list = original_list[~np.isin(original_list, closed_list)]
+    active_2016 = active_2016[active_2016['PRVDR_NUM'].isin(active_list_year)]
+
+
+all_closed_hospitals = pd.concat(closed_hospitals_list, ignore_index=True)
+
+num_closed = all_closed_hospitals.shape[0]
+print(f'Number of hospitals suspected to have closed between 2016 and 2019: {num_closed}')
+print(all_closed_hospitals[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head())
+```
+
 2. 
+```{python}
+sorted_closed = all_closed_hospitals.sort_values(by='FAC_NAME')
+top_10_closed = sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
+print(top_10_closed)
+```
+
 3. 
     a.
+```{python}
+closed_hospital_info = all_closed_hospitals[['PRVDR_NUM', 'Suspected_Closure_Year']]
+merge_hospitals = []
+
+# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
+for index, row in closed_hospital_info.iterrows():
+    prvd_num = row['PRVDR_NUM']
+    closure_year = row['Suspected_Closure_Year']
+    
+    # Identify hospitals where a merger occurs in the closure year
+    matching_hospitals = data_all[
+        (data_all['PRVDR_NUM'] == prvd_num) & 
+        (data_all['PGM_TRMNTN_CD'] == 1) & 
+        (data_all['year'] == closure_year)
+    ]
+    
+    # Add to merge list
+    if not matching_hospitals.empty:
+        merge_hospitals.append(prvd_num)
+
+unique_merge_hospitals = list(set(merge_hospitals))
+num_merge_hospitals = len(unique_merge_hospitals)
+print(f'Number of suspected hospital closures that may be mergers/acquisitions: {num_merge_hospitals}')
+print(unique_merge_hospitals)
+```
+
     b.
+```{python}
+valid_closed_hospitals_list = []
+
+# Count active hospitals by zipcode
+active_hospitals_count = (
+    data_all[data_all['PGM_TRMNTN_CD'] == 0]
+    .groupby(['year', 'ZIP_CD'])['PRVDR_NUM']
+    .nunique()
+    .reset_index(name='active_hospitals_count')
+)
+
+# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
+for _, closed_hospital in all_closed_hospitals.iterrows():
+    zip_code = closed_hospital['ZIP_CD']
+    closure_year = closed_hospital['Suspected_Closure_Year']
+    next_year = closure_year + 1
+
+    # Count hospital by zipcode: closure year and the next year
+    current_year_count = active_hospitals_count[
+        (active_hospitals_count['year'] == closure_year) &
+        (active_hospitals_count['ZIP_CD'] == zip_code)
+    ]
+
+    next_year_count = active_hospitals_count[
+        (active_hospitals_count['year'] == next_year) &
+        (active_hospitals_count['ZIP_CD'] == zip_code)
+    ]
+
+    # If either count is empty, skip this iteration
+    if next_year_count.empty or current_year_count.empty:
+        continue
+
+    # Check if active hospitals do not decrease in the closure year
+    if next_year_count['active_hospitals_count'].values[0] >= current_year_count['active_hospitals_count'].values[0]:
+        continue
+
+    # New closure list
+    valid_closed_hospitals_list.append(closed_hospital)
+
+valid_closed_hospitals = pd.DataFrame(valid_closed_hospitals_list)
+
+num_valid_closed = valid_closed_hospitals.shape[0]
+print(f'Number of valid suspected hospital closures: {num_valid_closed}')
+print(valid_closed_hospitals[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head())
+```
+
     c.
+```{python}
+sorted_closed = valid_closed_hospitals.sort_values(by='FAC_NAME')
+top_10_closed = sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
+print(top_10_closed)
+```
+
 
 ## Download Census zip code shapefile (10 pt) 
 
