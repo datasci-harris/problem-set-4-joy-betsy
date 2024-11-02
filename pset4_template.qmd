@@ -41,6 +41,12 @@ Please refer to the minilesson on code style
 
 **Important:** Repositories are for tracking code. **Do not commit the data or shapefiles to your repo.** The best way to do this is with `.gitignore`, which we have covered in class. If you do accidentally commit the data, Github has a [guide](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github#removing-files-from-a-repositorys-history). The best course of action depends on whether you have pushed yet. This also means that both partners will have to download the initial raw data and any data cleaning code will need to be re-run on both partners' computers. 
 
+```{python}
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+```
+
 ## Download and explore the Provider of Services (POS) file (10 pts)
 
 1. 
@@ -48,11 +54,37 @@ Please refer to the minilesson on code style
     a.
     b.
 3. 
+```{python}
+years = [2016, 2017, 2018, 2019]
+data_frames = []
+
+for year in years:
+    
+    file_path = f'{estfile}/pos{year}.csv'
+    df = pd.read_csv(file_path, encoding='ISO-8859-1')
+    df['year'] = year
+    data_frames.append(df)
+
+data_all = pd.concat(data_frames, ignore_index=True)
+data_all = data_all[
+    (data_all['PRVDR_CTGRY_SBTYP_CD'] == 1) & 
+    (data_all['PRVDR_CTGRY_CD'] == 1)
+]
+```
+
 4. 
     a.
     b.
 
 ## Identify hospital closures in POS file (15 pts) (*)
+
+Variables:  
+
+CCN(CMS Certification Number), 'PRVDR_NUM'  
+Termination Code, 'PGM_TRMNTN_CD', 00=ACTIVE PROVIDER  
+Facility Name, 'FAC_NAME'  
+Zip Code, 'ZIP_CD'  
+
 
 1. 
 ```{python}
@@ -100,84 +132,56 @@ print(top_10_closed)
 ```
 
 3. 
-    a.
+    a. & b.
 ```{python}
-closed_hospital_info = all_closed_hospitals[['PRVDR_NUM', 'Suspected_Closure_Year']]
-merge_hospitals = []
+def identify_valid_closed_hospitals(df, list):
+    valid_list = []
+    potential_mergers = 0
 
-# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
-for index, row in closed_hospital_info.iterrows():
-    prvd_num = row['PRVDR_NUM']
-    closure_year = row['Suspected_Closure_Year']
-    
-    # Identify hospitals where a merger occurs in the closure year
-    matching_hospitals = data_all[
-        (data_all['PRVDR_NUM'] == prvd_num) & 
-        (data_all['PGM_TRMNTN_CD'] == 1) & 
-        (data_all['year'] == closure_year)
-    ]
-    
-    # Add to merge list
-    if not matching_hospitals.empty:
-        merge_hospitals.append(prvd_num)
-
-unique_merge_hospitals = list(set(merge_hospitals))
-num_merge_hospitals = len(unique_merge_hospitals)
-print(f'Number of suspected hospital closures that may be mergers/acquisitions: {num_merge_hospitals}')
-print(unique_merge_hospitals)
-```
-
-    b.
-```{python}
-valid_closed_hospitals_list = []
-
-# Count active hospitals by zipcode
-active_hospitals_count = (
-    data_all[data_all['PGM_TRMNTN_CD'] == 0]
-    .groupby(['year', 'ZIP_CD'])['PRVDR_NUM']
-    .nunique()
-    .reset_index(name='active_hospitals_count')
+    # Count active hospitals by year, zipcode
+    active_hospitals_count = (
+    df[df['PGM_TRMNTN_CD'] == 0]
+    .groupby(['year', 'ZIP_CD'])
+    .size()
+    .unstack(fill_value=0)
 )
 
-# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
-for _, closed_hospital in all_closed_hospitals.iterrows():
-    zip_code = closed_hospital['ZIP_CD']
-    closure_year = closed_hospital['Suspected_Closure_Year']
-    next_year = closure_year + 1
+    # Loop through all closed hospitals
+    for _, closed_hospital in list.iterrows():
+        zip_code = closed_hospital['ZIP_CD']
+        closure_year = closed_hospital['Suspected_Closure_Year']
+        next_year = closure_year + 1
 
-    # Count hospital by zipcode: closure year and the next year
-    current_year_count = active_hospitals_count[
-        (active_hospitals_count['year'] == closure_year) &
-        (active_hospitals_count['ZIP_CD'] == zip_code)
-    ]
+        # Check only if the closure year is less than 2019
+        if closure_year < 2019:
+            current_year_count = active_hospitals_count.loc[closure_year, zip_code]
+            next_year_count = active_hospitals_count.loc[next_year, zip_code]
 
-    next_year_count = active_hospitals_count[
-        (active_hospitals_count['year'] == next_year) &
-        (active_hospitals_count['ZIP_CD'] == zip_code)
-    ]
+            # Check if the number of active hospitals does not decrease
+            if current_year_count > next_year_count:
+                valid_list.append(closed_hospital)
+            else:
+                potential_mergers += 1
 
-    # If either count is empty, skip this iteration
-    if next_year_count.empty or current_year_count.empty:
-        continue
+        else:
+            valid_list.append(closed_hospital)  # Closure year is 2019 or later
 
-    # Check if active hospitals do not decrease in the closure year
-    if next_year_count['active_hospitals_count'].values[0] >= current_year_count['active_hospitals_count'].values[0]:
-        continue
+    valid_closed_hospitals = pd.DataFrame(valid_list)
+    num_valid_closed = valid_closed_hospitals.shape[0]
 
-    # New closure list
-    valid_closed_hospitals_list.append(closed_hospital)
+    return valid_closed_hospitals, num_valid_closed, potential_mergers
 
-valid_closed_hospitals = pd.DataFrame(valid_closed_hospitals_list)
+results = identify_valid_closed_hospitals(data_all, sorted_closed)
 
-num_valid_closed = valid_closed_hospitals.shape[0]
-print(f'Number of valid suspected hospital closures: {num_valid_closed}')
-print(valid_closed_hospitals[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head())
+print(f'Number of potential mergers: {results[2]}')
+print(f'Number of valid suspected hospital closures: {results[1]}')
+print(results[0].head())
 ```
 
     c.
 ```{python}
-sorted_closed = valid_closed_hospitals.sort_values(by='FAC_NAME')
-top_10_closed = sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
+valid_sorted_closed = results[0].sort_values(by='FAC_NAME')
+top_10_closed = valid_sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
 print(top_10_closed)
 ```
 
