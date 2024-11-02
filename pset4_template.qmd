@@ -185,7 +185,6 @@ top_10_closed = valid_sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Ye
 print(top_10_closed)
 ```
 
-
 ## Download Census zip code shapefile (10 pt) 
 
 1. 
