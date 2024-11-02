@@ -1,5 +1,5 @@
 ---
-title: "Y30538 Problem Set 4"
+title: "30538 Problem Set 4"
 format: 
   pdf:
     keep-tex: true
@@ -119,11 +119,133 @@ The high consistency between the two plots over time suggests that the data has 
 ## Identify hospital closures in POS file (15 pts) (*)
 
 1. 
+```{python}
+import numpy as np
+
+data_all['PRVDR_NUM'] = pd.to_numeric(data_all['PRVDR_NUM'], errors='coerce')
+
+active_2016 = data_all[(data_all['year'] == 2016) & (data_all['PGM_TRMNTN_CD'] == 0)]
+active_2016 = active_2016[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD']]
+original_list = active_2016['PRVDR_NUM'].unique()
+
+closed_hospitals_list = []
+
+for year in [2017, 2018, 2019]:
+    # Active in current year
+    active_year = data_all[(data_all['year'] == year) & (data_all['PGM_TRMNTN_CD'] == 0)]
+    # Once appears in previous year
+    active_year = active_year[active_year['PRVDR_NUM'].isin(original_list)]
+    active_list_year = active_year['PRVDR_NUM'].unique()
+    
+    # Check active status
+    closed_in_year = active_2016[~active_2016['PRVDR_NUM'].isin(active_list_year)]
+    
+    # Identify and record closure 
+    closed_in_year = closed_in_year.copy()
+    closed_in_year['Suspected_Closure_Year'] = year
+    closed_hospitals_list.append(closed_in_year)
+
+    # Renew base
+    closed_list = closed_in_year['PRVDR_NUM'].unique()
+    original_list = original_list[~np.isin(original_list, closed_list)]
+    active_2016 = active_2016[active_2016['PRVDR_NUM'].isin(active_list_year)]
+
+
+all_closed_hospitals = pd.concat(closed_hospitals_list, ignore_index=True)
+
+num_closed = all_closed_hospitals.shape[0]
+print(f'Number of hospitals suspected to have closed between 2016 and 2019: {num_closed}')
+print(all_closed_hospitals[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head())
+```
+
 2. 
+```{python}
+sorted_closed = all_closed_hospitals.sort_values(by='FAC_NAME')
+top_10_closed = sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
+print(top_10_closed)
+```
+
 3. 
     a.
+```{python}
+closed_hospital_info = all_closed_hospitals[['PRVDR_NUM', 'Suspected_Closure_Year']]
+merge_hospitals = []
+
+# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
+for index, row in closed_hospital_info.iterrows():
+    prvd_num = row['PRVDR_NUM']
+    closure_year = row['Suspected_Closure_Year']
+    
+    # Identify hospitals where a merger occurs in the closure year
+    matching_hospitals = data_all[
+        (data_all['PRVDR_NUM'] == prvd_num) & 
+        (data_all['PGM_TRMNTN_CD'] == 1) & 
+        (data_all['year'] == closure_year)
+    ]
+    
+    # Add to merge list
+    if not matching_hospitals.empty:
+        merge_hospitals.append(prvd_num)
+
+unique_merge_hospitals = list(set(merge_hospitals))
+num_merge_hospitals = len(unique_merge_hospitals)
+print(f'Number of suspected hospital closures that may be mergers/acquisitions: {num_merge_hospitals}')
+print(unique_merge_hospitals)
+```
+
     b.
+```{python}
+valid_closed_hospitals_list = []
+
+# Count active hospitals by zipcode
+active_hospitals_count = (
+    data_all[data_all['PGM_TRMNTN_CD'] == 0]
+    .groupby(['year', 'ZIP_CD'])['PRVDR_NUM']
+    .nunique()
+    .reset_index(name='active_hospitals_count')
+)
+
+# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
+for _, closed_hospital in all_closed_hospitals.iterrows():
+    zip_code = closed_hospital['ZIP_CD']
+    closure_year = closed_hospital['Suspected_Closure_Year']
+    next_year = closure_year + 1
+
+    # Count hospital by zipcode: closure year and the next year
+    current_year_count = active_hospitals_count[
+        (active_hospitals_count['year'] == closure_year) &
+        (active_hospitals_count['ZIP_CD'] == zip_code)
+    ]
+
+    next_year_count = active_hospitals_count[
+        (active_hospitals_count['year'] == next_year) &
+        (active_hospitals_count['ZIP_CD'] == zip_code)
+    ]
+
+    # If either count is empty, skip this iteration
+    if next_year_count.empty or current_year_count.empty:
+        continue
+
+    # Check if active hospitals do not decrease in the closure year
+    if next_year_count['active_hospitals_count'].values[0] >= current_year_count['active_hospitals_count'].values[0]:
+        continue
+
+    # New closure list
+    valid_closed_hospitals_list.append(closed_hospital)
+
+valid_closed_hospitals = pd.DataFrame(valid_closed_hospitals_list)
+
+num_valid_closed = valid_closed_hospitals.shape[0]
+print(f'Number of valid suspected hospital closures: {num_valid_closed}')
+print(valid_closed_hospitals[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head())
+```
+
     c.
+```{python}
+sorted_closed = valid_closed_hospitals.sort_values(by='FAC_NAME')
+top_10_closed = sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
+print(top_10_closed)
+```
 
 ## Download Census zip code shapefile (10 pt) 
 
@@ -151,6 +273,12 @@ import geopandas as gpd
 filepath = "data/gz_2010_us_860_00_500k/gz_2010_us_860_00_500k.shp"
 data_zip = gpd.read_file(filepath)
 data_zip.head(100)
+
+texas_prefixes = ('75', '76', '77', '78', '79')
+zips_texas = data_zip[data_zip['ZCTA5'].str.startswith(texas_prefixes)]
+    
+
+
 ```
 
 
@@ -163,7 +291,6 @@ data_zip['centroid'] = data_zip.geometry.centroid
 zips_all_centroids = gpd.GeoDataFrame(data_zip[['ZCTA5', 'centroid']], geometry='centroid', crs=data_zip.crs)
 
 print("Dimensions of zips_all_centroids:", zips_all_centroids.shape)
-print(zips_all_centroids.head(100))
 ```
 The resulting GeoDataFrame has 33,120 rows and 2 columns.
 ZCTA5: it is a distinct ZIP code area in U.S.
@@ -172,14 +299,16 @@ Centroid: it is a geometry column that contains the geographic center point of t
 
 2. 
 ```{python}
-texas_prefixes = ('75', '76', '77', '78', '79')
 zips_texas_centroids = zips_all_centroids[zips_all_centroids['ZCTA5'].str.startswith(texas_prefixes)]
 num_texas_zip = zips_texas_centroids['ZCTA5'].nunique()
 print("The Number of unique zip codes in Texas:", num_texas_zip)
 
-
-
+border_states_prefixes = texas_prefixes + ('70', '71', '72', '73', '74', '87', '88')
+zips_texas_borderstates_centroids = zips_all_centroids[zips_all_centroids['ZCTA5'].str.startswith(border_states_prefixes)]
+num_borderstate_zip = zips_texas_borderstates_centroids['ZCTA5'].nunique()
+print("The Number of unique zip codes in Texas and bordering states:", num_borderstate_zip)
 ```
+
 
 3. 
 4. 
