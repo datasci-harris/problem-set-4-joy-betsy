@@ -45,6 +45,10 @@ Please refer to the minilesson on code style
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import geopandas as gpd
+import time
+import random
+from shapely.ops import nearest_points
 ```
 
 ## Download and explore the Provider of Services (POS) file (10 pts)
@@ -191,19 +195,201 @@ print(top_10_closed)
     a.
     b. 
 2. 
+```{python}
+# filepath = "/Users/yukireflection/Documents/GitHub/problem-set-4-joy-betsy/gz_2010_us_860_00_500k/gz_2010_us_860_00_500k.shp"
+data_zip = gpd.read_file(filepath)
+data_zip.head(100)
+
+texas_prefixes = ('75', '76', '77', '78', '79')
+zips_texas = data_zip[data_zip['ZCTA5'].str.startswith(texas_prefixes)]
+
+# estfile = 'data'
+# data = pd.read_csv(f'{estfile}/pos2016.csv')
+hospitals_2016 = data[
+    (data['PGM_TRMNTN_CD'] == 0) &
+    (data['PRVDR_CTGRY_SBTYP_CD'] == 1) &
+    (data['PRVDR_CTGRY_CD'] == 1)
+].copy()
+
+hospitals_2016['ZIP_CD'] = hospitals_2016['ZIP_CD'].astype(str).str[:5]
+hospitals_2016['ZIP_CD'] = hospitals_2016['ZIP_CD'].str.zfill(5)
+hospitals_texas = hospitals_2016[hospitals_2016['ZIP_CD'].str.startswith(texas_prefixes)].copy()
+
+hospitals_per_zip = hospitals_texas.groupby('ZIP_CD')['PRVDR_NUM'].nunique().reset_index()
+hospitals_per_zip.columns = ['ZIP_CD', 'hospital_count']
+
+# Merge
+zips_texas = zips_texas.copy()
+zips_texas = zips_texas.merge(hospitals_per_zip, left_on='ZCTA5', right_on='ZIP_CD', how='left')
+zips_texas['hospital_count'] = zips_texas['hospital_count'].fillna(0)
+
+
+# Plot choropleth
+fig, ax = plt.subplots(figsize=(14, 14))
+zips_texas.plot(
+    column='hospital_count',
+    cmap='Blues',
+    linewidth=0.8,
+    ax=ax,
+    edgecolor='0.6',
+    legend=True,
+    legend_kwds={'label': "Number of Hospitals", 'orientation': "horizontal"}
+)
+ax.set_title('Number of Hospitals per Zip Code in Texas', fontsize=15)
+ax.set_axis_off()
+plt.show()
+```
+
 
 ## Calculate zip code’s distance to the nearest hospital (20 pts) (*)
 
 1. 
+```{python}
+data_zip['centroid'] = data_zip.geometry.centroid
+zips_all_centroids = gpd.GeoDataFrame(data_zip[['ZCTA5', 'centroid']], geometry='centroid', crs=data_zip.crs)
+print("Dimensions of zips_all_centroids:", zips_all_centroids.shape)
+```
+
+ZCTA5: ZIP Code Tabulation Area  
+centroid: The coordinates of the center of mass, stored as point geometric information, represent the location of the center of each zip code area.  
+
+
 2. 
+```{python}
+zips_texas_centroids = zips_all_centroids[zips_all_centroids['ZCTA5'].str.startswith(texas_prefixes)]
+num_texas_zip = zips_texas_centroids['ZCTA5'].nunique()
+print("The Number of unique zip codes in Texas:", num_texas_zip)
+
+border_states_prefixes = texas_prefixes + ('70', '71', '72', '73', '74', '87', '88')
+zips_texas_borderstates_centroids = zips_all_centroids[zips_all_centroids['ZCTA5'].str.startswith(border_states_prefixes)]
+num_borderstate_zip = zips_texas_borderstates_centroids['ZCTA5'].nunique()
+print("The Number of unique zip codes in Texas and bordering states:", num_borderstate_zip)
+```
+
+
 3. 
+```{python}
+hospital_boarderstates = hospitals_2016[hospitals_2016['ZIP_CD'].str.startswith(border_states_prefixes)]
+hospitals_per_zip = hospital_boarderstates['ZIP_CD'].value_counts().reset_index()
+hospitals_per_zip.columns = ['ZIP_CD', 'hospital_count']
+
+hospitals_per_zip['ZIP_CD'] = hospitals_per_zip['ZIP_CD'].astype(str).str.replace('.0', '', regex=False)
+zips_texas_borderstates_centroids['ZCTA5'] = zips_texas_borderstates_centroids['ZCTA5'].astype(str).str.replace('.0', '', regex=False)
+
+
+zips_withhospital_centroids = zips_texas_borderstates_centroids.merge(hospitals_per_zip, left_on = 'ZCTA5', right_on = 'ZIP_CD', how = 'left').fillna(0)
+zips_withhospital_centroids = zips_withhospital_centroids[zips_withhospital_centroids['hospital_count'] >= 1]
+
+print(len(zips_withhospital_centroids))
+print(zips_withhospital_centroids.head())
+```
+
+I'm using left merge.  
+Merge Variables: The variables used in the merge are ZCTA5 (from zips_texas_borderstates_centroids) and ZIP_CD (from hospitals_per_zip).  
+
+
 4. 
     a.
+```{python}
+subset_zips = zips_texas_centroids.sample(n=10, random_state=10)
+
+start_time = time.time()
+
+def cal_nearest_distance(row, df):
+    nearest_geom = nearest_points(row['centroid'], df.unary_union)[1]
+    return row['centroid'].distance(nearest_geom)
+
+subset_zips['nearest_distance'] = subset_zips.apply(cal_nearest_distance,
+                                                    df=zips_withhospital_centroids,
+                                                    axis=1)
+
+end_time = time.time()
+
+time_calculations = end_time - start_time
+print(f"Time taken (10 zipcodes): {time_calculations} seconds")
+time_all = time_calculations * (len(zips_texas_centroids)/10)
+print(f"Time taken (all): {time_all} seconds")
+```
+
+
     b.
+```{python}
+start_time_b = time.time()
+
+zips_texas_centroids['nearest_distance'] = zips_texas_centroids.apply(cal_nearest_distance,
+                                                                      df = zips_withhospital_centroids,
+                                                                      axis = 1)
+
+end_time_b = time.time()
+
+time_calculations_b = end_time_b - start_time_b
+print(f"Total time: {time_calculations_b} seconds")
+```
+
+The difference is significant, it actually runs much faster than I expected.  
+
+
+    c.   
+
+UNIT["Degree",0.017453292519943295] indicates that the unit is degree (latitude and longitude coordinates), and the number 0.017453292519943295 is the factor that converts degree to radian. Transform the latitude and longitude into UTM using pyproj coordinates to accurately calculate the distance (in meters).  
+1m ≈ 0.000621371miles  
+```{python}
+zips_texas_centroids = zips_texas_centroids.to_crs(epsg=32614)
+zips_withhospital_centroids = zips_withhospital_centroids.to_crs(epsg=32614)
+
+start_time_projected = time.time()
+
+zips_texas_centroids['nearest_distance_meters'] = zips_texas_centroids.apply(
+    cal_nearest_distance,
+    df=zips_withhospital_centroids,
+    axis=1
+)
+
+end_time_projected = time.time()
+
+time_projected = end_time_projected - start_time_projected
+print(f"Time taken with projected data: {time_projected / 60:.2f} minutes")
+zips_texas_centroids['nearest_distance_miles'] = zips_texas_centroids['nearest_distance'] * 0.000621371
+print(zips_texas_centroids[['ZCTA5', 'nearest_distance_miles']].head())
+```
+
+
 5. 
     a.
+I started with a distance calculation using UTM (EPSG:32614), which gives the units of meters. The meters were then converted to miles in order to report the average distance from each ZIP code to the nearest hospital.
+
+
     b.
+```{python}
+average_distance_meters = zips_texas_centroids['nearest_distance_meters'].mean()
+average_distance_miles = average_distance_meters * 0.000621371
+print(f"Avg distance to the nearest hospital: {average_distance_miles:.2f} miles")
+```
+
+The average distance of 13.43 miles to the nearest hospital may seem like a reasonable result since Texas is a sparsely populated state.  
+In Texas, the distance between hospitals varies by region. According to the 2022 American Hospital Association report, the average Texas resident would have to travel approximately 8.5 miles to reach the nearest hospital. There is also data showing that the average rural Texas resident is about twice as far from a hospital as an urban resident, at about 12.5 miles, demonstrating the challenges of healthcare access in rural areas.  
+Reference:  
+https://www.pewresearch.org/short-reads/2018/12/12/how-far-americans-live-from-the-closest-hospital-differs-by-community-type/  
+https://www.aha.org/news/headline/2018-12-14-study-rural-residents-travel-about-twice-far-hospital-average  
+
+
     c.
+```{python}
+fig, ax = plt.subplots(figsize=(14, 14))
+zips_texas_centroids.plot(
+    column='nearest_distance_miles',
+    cmap='Blues',
+    linewidth=0.8,
+    ax=ax,
+    edgecolor='0.6',
+    legend=True
+)
+ax.set_title('Distance to Nearest Hospital in Texas', fontsize=15)
+ax.set_axis_off()
+plt.show()
+```
+
+
     
 ## Effects of closures on access in Texas (15 pts)
 
@@ -213,3 +399,14 @@ print(top_10_closed)
 4. 
 
 ## Reflecting on the exercise (10 pts) 
+
+
+
+
+Partner_2:   
+
+ZIP codes with at least one hospital closure between 2016 and 2019 are the most directly impacted outcomes. Here we begin by computationally ignoring follow-up in subsequent years of closure, and also defaulting to the idea that hospital closures within a given ZIP code mean fewer visits for residents.  
+
+The current methodology has limitations, such as the fact that distance effectively ignores the population density of the corresponding area in English: zip code areas vary widely in size and population density. Some areas may have a large number of residents, while others are relatively empty. Using zip codes alone to delineate areas may mask the actual distribution of health care needs and resources.  
+
+Improvements can be made by considering a combination of factors: for example, when assessing accessibility to hospitals, taking into account the distribution of populations and residential areas, transportation networks, and public transportation options (which are often included in geographic data as well) can provide a more complete picture of how residents actually travel to hospitals.  
