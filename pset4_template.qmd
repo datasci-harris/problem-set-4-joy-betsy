@@ -75,7 +75,7 @@ Yes, based on the pos2016 data and definitions, the number 7,245 is logical and 
 
 
     b.
-Cross-reference with 2024 AHA HOSPITAL STATISTICS. The number of U.S. community hospitals in 2024 is 5,129.
+Cross-reference with 2024 AHA HOSPITAL STATISTICS. The number of U.S. community hospitals in 2024 is 5,129. (Reference: https://www.aha.org/statistics/fast-facts-us-hospitals)
 The gap may come from definition difference. The community hospitals in the research are defined as all nonfederal, short-term general, and other special hospitals. This does not fit the short-term designation in pos2016 dataset.
 And since 2016, there has been a trend of hospital closures, particularly in rural and less profitable areas. These closures could reduce the number of short-term facilities, meaning fewer hospitals are categorized as such in 2024.
 
@@ -144,21 +144,18 @@ original_list = active_2016['PRVDR_NUM'].unique()
 closed_hospitals_list = []
 
 for year in [2017, 2018, 2019]:
-    # Active in current year
+    
     active_year = data_all[(data_all['year'] == year) & (data_all['PGM_TRMNTN_CD'] == 0)]
-    # Once appears in previous year
+    
     active_year = active_year[active_year['PRVDR_NUM'].isin(original_list)]
     active_list_year = active_year['PRVDR_NUM'].unique()
     
-    # Check active status
     closed_in_year = active_2016[~active_2016['PRVDR_NUM'].isin(active_list_year)]
     
-    # Identify and record closure 
     closed_in_year = closed_in_year.copy()
     closed_in_year['Suspected_Closure_Year'] = year
     closed_hospitals_list.append(closed_in_year)
 
-    # Renew base
     closed_list = closed_in_year['PRVDR_NUM'].unique()
     original_list = original_list[~np.isin(original_list, closed_list)]
     active_2016 = active_2016[active_2016['PRVDR_NUM'].isin(active_list_year)]
@@ -187,7 +184,6 @@ def identify_valid_closed_hospitals(df, list):
     valid_list = []
     potential_mergers = 0
 
-    # Count active hospitals by year, zipcode
     active_hospitals_count = (
     df[df['PGM_TRMNTN_CD'] == 0]
     .groupby(['year', 'ZIP_CD'])
@@ -195,25 +191,22 @@ def identify_valid_closed_hospitals(df, list):
     .unstack(fill_value=0)
 )
 
-    # Loop through all closed hospitals
     for _, closed_hospital in list.iterrows():
         zip_code = closed_hospital['ZIP_CD']
         closure_year = closed_hospital['Suspected_Closure_Year']
         next_year = closure_year + 1
 
-        # Check only if the closure year is less than 2019
         if closure_year < 2019:
             current_year_count = active_hospitals_count.loc[closure_year, zip_code]
             next_year_count = active_hospitals_count.loc[next_year, zip_code]
 
-            # Check if the number of active hospitals does not decrease
             if current_year_count > next_year_count:
                 valid_list.append(closed_hospital)
             else:
                 potential_mergers += 1
 
         else:
-            valid_list.append(closed_hospital)  # Closure year is 2019 or later
+            valid_list.append(closed_hospital)
 
     valid_closed_hospitals = pd.DataFrame(valid_list)
     num_valid_closed = valid_closed_hospitals.shape[0]
@@ -226,6 +219,12 @@ print(f'Number of potential mergers: {results[2]}')
 print(f'Number of valid suspected hospital closures: {results[1]}')
 print(results[0].head())
 ```
+I also notice a case where both closure year and following year have zero active hospitals. If so, it does not indicate a potential merger but rather an absence of active hospitals in that area. In this case, the code will be different by adding "current_year_count > 0" as one more condition into the "if current_year_count > next_year_count:" part. So it would be, "if current_year_count > 0 and current_year_count > next_year_count:", and the result would be:
+
+Number of potential mergers: 31;
+Number of valid suspected hospital closures: 143.
+
+I don't put this condition into my actual code part and get the result of merger 97, closure 77, which is also used in section5 plots, since the question focuses on whether there is a degree. This is also a limitation of the "first-pass" method mentioned in section6.
 
 
     c.
@@ -501,17 +500,14 @@ directly_affected = zips_texas.merge(
 )
 print(directly_affected)
 
-buffer_distance_meters = 10 / 0.000621371
+directly_affected = directly_affected.to_crs(epsg=32614)
 
-directly_affected_centroids = zips_texas_centroids[
-    zips_texas_centroids['ZCTA5'].isin(texas_closures_by_zip['ZIP_CD'])
-]
-
-directly_affected_centroids['buffer'] = directly_affected_centroids.geometry.buffer(buffer_distance_meters)
+buffer_meters = 10 / 0.000621371
+directly_affected['buffer'] = directly_affected.geometry.buffer(buffer_meters)
 
 indirectly_affected = gpd.sjoin(
-    zips_texas_centroids,
-    directly_affected_centroids.set_geometry('buffer'),
+    zips_texas.to_crs(epsg=32614),
+    directly_affected.set_geometry('buffer'),
     how='inner',
     predicate='intersects'
 )
@@ -519,7 +515,6 @@ indirectly_affected = gpd.sjoin(
 indirectly_affected = indirectly_affected[
     ~indirectly_affected['ZCTA5_left'].isin(directly_affected['ZCTA5'])
 ]
-print("Columns in indirectly_affected:", indirectly_affected.columns)
 
 indirectly_affected_count = indirectly_affected['ZCTA5_left'].nunique()
 print(f"The number of directly affected zip codes in Texas：{indirectly_affected_count}")
@@ -560,6 +555,8 @@ plt.show()
 Partner_1:
 
 The "first-pass" method, which removes suspected closures in zip codes where the number of active hospitals does not decrease the year after the suspected closure, is a helpful starting point. However, it has some limitations.
+
+As mentioned in section2.3, the first-pass method ignores the case where both the closure year and the following year have zero active hospitals, and it incorrectly categorize this situation as a potential merger. To solve this, more considerations are needed like introducing a rule for cases where both the closure year and the following year have zero active hospitals: check if the area had limited healthcare resources. If so, classify it as a true closure rather than a potential merger.
 
 Hospital data might not be fully updated in the following year. Some hospitals may actually be closed while having a late report, leading to an unchanged active hospitals number. There are also cases where hospitals relocate like moving in to or out from a particular zip code area while keeping the same total number. Consolidating and seperating could also happen at the same time while the total number of active hospitals might remain unchanged.
 
