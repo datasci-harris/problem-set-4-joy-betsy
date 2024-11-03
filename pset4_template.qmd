@@ -1,5 +1,7 @@
 ---
 title: "30538 Problem Set 4"
+date: "Nov 3"
+geometry: margin=1in
 format: 
   pdf:
     keep-tex: true
@@ -10,7 +12,7 @@ format:
 include-before-body:
   text: |
     \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
-      showspaces = false,
+      showspaces = fa lse,
       showtabs = false,
       breaksymbolleft={},
       breaklines
@@ -27,11 +29,11 @@ Please refer to the minilesson on code style
 ## Submission Steps (10 pts)
 1. This problem set is a paired problem set.
 2. Play paper, scissors, rock to determine who goes first. Call that person *Partner 1*.
-    - Partner 1 (name and cnet ID): Betsy Shi
-    - Partner 2 (name and cnet ID): Joy Wu
+    - Partner 1 (name and cnet ID): Betsy Shi, betsyshi
+    - Partner 2 (name and cnet ID): Joy Wu, joywu
 3. Partner 1 will accept the `ps4` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
 4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: BS JW
-5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
+5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**" Betsy Shi & Joy Wu (1 point)
 6. Late coins used this pset: 1 Late coins left after submission: 2
 7. Knit your `ps4.qmd` to an PDF file to make `ps4.pdf`, 
     * The PDF should not be more than 25 pages. Use `head()` and re-size figures when appropriate. 
