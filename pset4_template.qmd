@@ -32,7 +32,7 @@ Please refer to the minilesson on code style
 3. Partner 1 will accept the `ps4` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
 4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*\_\_\*\* \*\*\_\_\*\*
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
-6. Late coins used this pset: \*\*\_\_\*\* Late coins left after submission: \*\*\_\_\*\*
+6. Late coins used this pset: 1 Late coins left after submission: 2
 7. Knit your `ps4.qmd` to an PDF file to make `ps4.pdf`, 
     * The PDF should not be more than 25 pages. Use `head()` and re-size figures when appropriate. 
 8. (Partner 1): push  `ps4.qmd` and `ps4.pdf` to your github repo.
@@ -40,6 +40,16 @@ Please refer to the minilesson on code style
 10. (Partner 1): tag your submission in Gradescope
 
 **Important:** Repositories are for tracking code. **Do not commit the data or shapefiles to your repo.** The best way to do this is with `.gitignore`, which we have covered in class. If you do accidentally commit the data, Github has a [guide](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github#removing-files-from-a-repositorys-history). The best course of action depends on whether you have pushed yet. This also means that both partners will have to download the initial raw data and any data cleaning code will need to be re-run on both partners' computers. 
+
+```{python}
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import geopandas as gpd
+import time
+import random
+from shapely.ops import nearest_points
+```
 
 ## Download and explore the Provider of Services (POS) file (10 pts)
 
@@ -50,12 +60,11 @@ Based on the rest of the problem set and the data dictionary, I pulled ZIP_CD, P
 2. 
     a.
 ```{python}
-import pandas as pd
-
 path = "data/pos2016.csv"
 df_2016 = pd.read_csv(path)
 
-short_term_hospitals = df_2016[(df_2016['PRVDR_CTGRY_CD'] == 1) & (df_2016['PRVDR_CTGRY_SBTYP_CD'] == 1)]
+short_term_hospitals = df_2016[(df_2016['PRVDR_CTGRY_CD'] == 1) 
+                     & (df_2016['PRVDR_CTGRY_SBTYP_CD'] == 1)]
 
 num_short_term = short_term_hospitals.shape[0]
 print(num_short_term)
@@ -71,9 +80,7 @@ And since 2016, there has been a trend of hospital closures, particularly in rur
 
 3. 
 ```{python}
-import matplotlib.pyplot as plt
-
-years = [2016, 2017, 2018, 2019]
+years = [2017, 2018, 2019]
 data_frames = []
 
 for year in years:
@@ -81,11 +88,16 @@ for year in years:
     file_path = f'data/pos{year}.csv'
     df = pd.read_csv(file_path, encoding='ISO-8859-1')
     df['year'] = year
-    data_frames.append(df)
+    all_short_term = df[(df['PRVDR_CTGRY_CD'] == 1) & (df['PRVDR_CTGRY_SBTYP_CD'] == 1)]
+    data_frames.append(all_short_term)
 
 data_all = pd.concat(data_frames, ignore_index=True)
 
+short_term_hospitals['year'] = 2016
+data_all = pd.concat([data_all, short_term_hospitals], ignore_index=True)
+
 observation_by_year = data_all.groupby('year').size()
+print(observation_by_year)
 
 observation_by_year.plot(kind='bar')
 plt.title('Number of Observations by Year')
@@ -109,8 +121,9 @@ plt.xticks(rotation=0)
 plt.show()
 ```
 
+
     b.
-The two plots are highly identical, having similar count each year from 2016 to 2019 wich each bar reaching 140,000.
+The two plots are highly identical, having similar count each year from 2016 to 2019 wich each bar being aroud 7,000.
 This suggests that each hospital only has one record each year, with no extra records or repeated entries. This consistency shows that the dataset is well organized.
 And since both the total number of observations an unique hospital counts are stable, there is no sigh of additional data collection periods within each year. This further supports that the deata is collected once a year.
 The high consistency between the two plots over time suggests that the data has high integrity, with no missing data or big changes in participants.
@@ -118,10 +131,8 @@ The high consistency between the two plots over time suggests that the data has 
 
 ## Identify hospital closures in POS file (15 pts) (*)
 
-1. 
+1.
 ```{python}
-import numpy as np
-
 data_all['PRVDR_NUM'] = pd.to_numeric(data_all['PRVDR_NUM'], errors='coerce')
 
 active_2016 = data_all[(data_all['year'] == 2016) & (data_all['PGM_TRMNTN_CD'] == 0)]
@@ -158,6 +169,7 @@ print(f'Number of hospitals suspected to have closed between 2016 and 2019: {num
 print(all_closed_hospitals[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head())
 ```
 
+
 2. 
 ```{python}
 sorted_closed = all_closed_hospitals.sort_values(by='FAC_NAME')
@@ -165,87 +177,62 @@ top_10_closed = sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].
 print(top_10_closed)
 ```
 
+
 3. 
-    a.
+    a. & b.
 ```{python}
-closed_hospital_info = all_closed_hospitals[['PRVDR_NUM', 'Suspected_Closure_Year']]
-merge_hospitals = []
+def identify_valid_closed_hospitals(df, list):
+    valid_list = []
+    potential_mergers = 0
 
-# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
-for index, row in closed_hospital_info.iterrows():
-    prvd_num = row['PRVDR_NUM']
-    closure_year = row['Suspected_Closure_Year']
-    
-    # Identify hospitals where a merger occurs in the closure year
-    matching_hospitals = data_all[
-        (data_all['PRVDR_NUM'] == prvd_num) & 
-        (data_all['PGM_TRMNTN_CD'] == 1) & 
-        (data_all['year'] == closure_year)
-    ]
-    
-    # Add to merge list
-    if not matching_hospitals.empty:
-        merge_hospitals.append(prvd_num)
-
-unique_merge_hospitals = list(set(merge_hospitals))
-num_merge_hospitals = len(unique_merge_hospitals)
-print(f'Number of suspected hospital closures that may be mergers/acquisitions: {num_merge_hospitals}')
-print(unique_merge_hospitals)
-```
-
-    b.
-```{python}
-valid_closed_hospitals_list = []
-
-# Count active hospitals by zipcode
-active_hospitals_count = (
-    data_all[data_all['PGM_TRMNTN_CD'] == 0]
-    .groupby(['year', 'ZIP_CD'])['PRVDR_NUM']
-    .nunique()
-    .reset_index(name='active_hospitals_count')
+    # Count active hospitals by year, zipcode
+    active_hospitals_count = (
+    df[df['PGM_TRMNTN_CD'] == 0]
+    .groupby(['year', 'ZIP_CD'])
+    .size()
+    .unstack(fill_value=0)
 )
 
-# Loop through all closed hospitals by "PRVDR_NUM" and "Suspected_Closure_Year"
-for _, closed_hospital in all_closed_hospitals.iterrows():
-    zip_code = closed_hospital['ZIP_CD']
-    closure_year = closed_hospital['Suspected_Closure_Year']
-    next_year = closure_year + 1
+    # Loop through all closed hospitals
+    for _, closed_hospital in list.iterrows():
+        zip_code = closed_hospital['ZIP_CD']
+        closure_year = closed_hospital['Suspected_Closure_Year']
+        next_year = closure_year + 1
 
-    # Count hospital by zipcode: closure year and the next year
-    current_year_count = active_hospitals_count[
-        (active_hospitals_count['year'] == closure_year) &
-        (active_hospitals_count['ZIP_CD'] == zip_code)
-    ]
+        # Check only if the closure year is less than 2019
+        if closure_year < 2019:
+            current_year_count = active_hospitals_count.loc[closure_year, zip_code]
+            next_year_count = active_hospitals_count.loc[next_year, zip_code]
 
-    next_year_count = active_hospitals_count[
-        (active_hospitals_count['year'] == next_year) &
-        (active_hospitals_count['ZIP_CD'] == zip_code)
-    ]
+            # Check if the number of active hospitals does not decrease
+            if current_year_count > next_year_count:
+                valid_list.append(closed_hospital)
+            else:
+                potential_mergers += 1
 
-    # If either count is empty, skip this iteration
-    if next_year_count.empty or current_year_count.empty:
-        continue
+        else:
+            valid_list.append(closed_hospital)  # Closure year is 2019 or later
 
-    # Check if active hospitals do not decrease in the closure year
-    if next_year_count['active_hospitals_count'].values[0] >= current_year_count['active_hospitals_count'].values[0]:
-        continue
+    valid_closed_hospitals = pd.DataFrame(valid_list)
+    num_valid_closed = valid_closed_hospitals.shape[0]
 
-    # New closure list
-    valid_closed_hospitals_list.append(closed_hospital)
+    return valid_closed_hospitals, num_valid_closed, potential_mergers
 
-valid_closed_hospitals = pd.DataFrame(valid_closed_hospitals_list)
+results = identify_valid_closed_hospitals(data_all, sorted_closed)
 
-num_valid_closed = valid_closed_hospitals.shape[0]
-print(f'Number of valid suspected hospital closures: {num_valid_closed}')
-print(valid_closed_hospitals[['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head())
+print(f'Number of potential mergers: {results[2]}')
+print(f'Number of valid suspected hospital closures: {results[1]}')
+print(results[0].head())
 ```
+
 
     c.
 ```{python}
-sorted_closed = valid_closed_hospitals.sort_values(by='FAC_NAME')
-top_10_closed = sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
+valid_sorted_closed = results[0].sort_values(by='FAC_NAME')
+top_10_closed = valid_sorted_closed[['FAC_NAME', 'ZIP_CD', 'Suspected_Closure_Year']].head(10)
 print(top_10_closed)
 ```
+
 
 ## Download Census zip code shapefile (10 pt) 
 
@@ -256,6 +243,7 @@ print(top_10_closed)
 .shp is a shapefile which is the main file containing the geometry of each feature, including the spatial data that represent the shapes of geographical features.
 .shx is a shape index file which provides an index of the geonmetry in the .shp file, helping to improve the loading of spatial data.
 .xml is a metadata file which contains metadata and provides descriptive information about the dataset.
+
 
     b. 
 .dbf: 6.4 MB
@@ -268,8 +256,6 @@ As seen, the .shp file is the largest, the .shx file and .xml file are relativel
 
 2. 
 ```{python}
-import geopandas as gpd
-
 filepath = "data/gz_2010_us_860_00_500k/gz_2010_us_860_00_500k.shp"
 data_zip = gpd.read_file(filepath)
 data_zip.head(100)
@@ -277,8 +263,38 @@ data_zip.head(100)
 texas_prefixes = ('75', '76', '77', '78', '79')
 zips_texas = data_zip[data_zip['ZCTA5'].str.startswith(texas_prefixes)]
     
+estfile = 'data'
+data = pd.read_csv(f'{estfile}/pos2016.csv')
+hospitals_2016 = data[
+    (data['PGM_TRMNTN_CD'] == 0) &
+    (data['PRVDR_CTGRY_SBTYP_CD'] == 1) &
+    (data['PRVDR_CTGRY_CD'] == 1)
+].copy()
 
+hospitals_2016['ZIP_CD'] = hospitals_2016['ZIP_CD'].astype(str).str[:5]
+hospitals_2016['ZIP_CD'] = hospitals_2016['ZIP_CD'].str.zfill(5)
+hospitals_texas = hospitals_2016[hospitals_2016['ZIP_CD'].str.startswith(texas_prefixes)].copy()
 
+hospitals_per_zip = hospitals_texas.groupby('ZIP_CD')['PRVDR_NUM'].nunique().reset_index()
+hospitals_per_zip.columns = ['ZIP_CD', 'hospital_count']
+
+zips_texas = zips_texas.copy()
+zips_texas = zips_texas.merge(hospitals_per_zip, left_on='ZCTA5', right_on='ZIP_CD', how='left')
+zips_texas['hospital_count'] = zips_texas['hospital_count'].fillna(0)
+
+fig, ax = plt.subplots(figsize=(14, 14))
+zips_texas.plot(
+    column='hospital_count',
+    cmap='Blues',
+    linewidth=0.8,
+    ax=ax,
+    edgecolor='0.6',
+    legend=True,
+    legend_kwds={'label': "Number of Hospitals", 'orientation': "horizontal"}
+)
+ax.set_title('Number of Hospitals per Zip Code in Texas', fontsize=15)
+ax.set_axis_off()
+plt.show()
 ```
 
 
@@ -311,20 +327,242 @@ print("The Number of unique zip codes in Texas and bordering states:", num_borde
 
 
 3. 
+```{python}
+hospital_boarderstates = hospitals_2016[hospitals_2016['ZIP_CD'].str.startswith(border_states_prefixes)]
+hospitals_per_zip = hospital_boarderstates['ZIP_CD'].value_counts().reset_index()
+hospitals_per_zip.columns = ['ZIP_CD', 'hospital_count']
+
+hospitals_per_zip['ZIP_CD'] = hospitals_per_zip['ZIP_CD'].astype(str).str.replace('.0', '', regex=False)
+zips_texas_borderstates_centroids['ZCTA5'] = zips_texas_borderstates_centroids['ZCTA5'].astype(str).str.replace('.0', '', regex=False)
+
+
+zips_withhospital_centroids = zips_texas_borderstates_centroids.merge(hospitals_per_zip, left_on = 'ZCTA5', right_on = 'ZIP_CD', how = 'left').fillna(0)
+zips_withhospital_centroids = zips_withhospital_centroids[zips_withhospital_centroids['hospital_count'] >= 1]
+
+print(len(zips_withhospital_centroids))
+print(zips_withhospital_centroids.head())
+```
+I'm using left merge.  
+Merge Variables: The variables used in the merge are ZCTA5 (from zips_texas_borderstates_centroids) and ZIP_CD (from hospitals_per_zip).  
+
+
 4. 
     a.
+```{python}
+subset_zips = zips_texas_centroids.sample(n=10, random_state=10)
+
+start_time = time.time()
+
+def cal_nearest_distance(row, df):
+    nearest_geom = nearest_points(row['centroid'], df.unary_union)[1]
+    return row['centroid'].distance(nearest_geom)
+
+subset_zips['nearest_distance'] = subset_zips.apply(cal_nearest_distance,
+                                                    df=zips_withhospital_centroids,
+                                                    axis=1)
+
+end_time = time.time()
+
+time_calculations = end_time - start_time
+print(f"Time taken (10 zipcodes): {time_calculations} seconds")
+time_all = time_calculations * (len(zips_texas_centroids)/10)
+print(f"Time taken (all): {time_all} seconds")
+```
+
+
     b.
+```{python}
+start_time_b = time.time()
+
+zips_texas_centroids['nearest_distance'] = zips_texas_centroids.apply(cal_nearest_distance,
+                                                                      df = zips_withhospital_centroids,
+                                                                      axis = 1)
+
+end_time_b = time.time()
+
+time_calculations_b = end_time_b - start_time_b
+print(f"Total time: {time_calculations_b} seconds")
+```
+The difference is significant, it actually runs much faster than I expected. 
+
+
+    c.
+UNIT["Degree",0.017453292519943295] indicates that the unit is degree (latitude and longitude coordinates), and the number 0.017453292519943295 is the factor that converts degree to radian. Transform the latitude and longitude into UTM using pyproj coordinates to accurately calculate the distance (in meters).  
+1m ≈ 0.000621371miles  
+```{python}
+zips_texas_centroids = zips_texas_centroids.to_crs(epsg=32614)
+zips_withhospital_centroids = zips_withhospital_centroids.to_crs(epsg=32614)
+
+start_time_projected = time.time()
+
+zips_texas_centroids['nearest_distance_meters'] = zips_texas_centroids.apply(
+    cal_nearest_distance,
+    df=zips_withhospital_centroids,
+    axis=1
+)
+
+end_time_projected = time.time()
+
+time_projected = end_time_projected - start_time_projected
+print(f"Time taken with projected data: {time_projected / 60:.2f} minutes")
+zips_texas_centroids['nearest_distance_miles'] = zips_texas_centroids['nearest_distance'] * 0.000621371
+print(zips_texas_centroids[['ZCTA5', 'nearest_distance_miles']].head())
+```
+
+
 5. 
     a.
+I started with a distance calculation using UTM (EPSG:32614), which gives the units of meters. The meters were then converted to miles in order to report the average distance from each ZIP code to the nearest hospital.
+
+
     b.
+```{python}
+average_distance_meters = zips_texas_centroids['nearest_distance_meters'].mean()
+average_distance_miles = average_distance_meters * 0.000621371
+print(f"Avg distance to the nearest hospital: {average_distance_miles:.2f} miles")
+```
+The average distance of 13.43 miles to the nearest hospital may seem like a reasonable result since Texas is a sparsely populated state.  
+In Texas, the distance between hospitals varies by region. According to the 2022 American Hospital Association report, the average Texas resident would have to travel approximately 8.5 miles to reach the nearest hospital. There is also data showing that the average rural Texas resident is about twice as far from a hospital as an urban resident, at about 12.5 miles, demonstrating the challenges of healthcare access in rural areas.  
+Reference:  
+https://www.pewresearch.org/short-reads/2018/12/12/how-far-americans-live-from-the-closest-hospital-differs-by-community-type/  
+https://www.aha.org/news/headline/2018-12-14-study-rural-residents-travel-about-twice-far-hospital-average 
+
+
     c.
-    
+```{python}
+fig, ax = plt.subplots(figsize=(14, 14))
+zips_texas_centroids.plot(
+    column='nearest_distance_miles',
+    cmap='Blues',
+    linewidth=0.8,
+    ax=ax,
+    edgecolor='0.6',
+    legend=True
+)
+ax.set_title('Distance to Nearest Hospital in Texas', fontsize=15)
+ax.set_axis_off()
+plt.show()
+```
+
 
 ## Effects of closures on access in Texas (15 pts)
 
 1. 
+```{python}
+texas_closures = valid_sorted_closed[
+    valid_sorted_closed['ZIP_CD'].astype(str).str.startswi(texas_prefixes)
+]
+
+texas_closures_by_zip = texas_closures.groupby('ZIP_CD').size().reset_index(name='closure_count')
+
+texas_closures_by_zip['ZIP_CD'] = texas_closures_by_zip['ZIP_CD'].astype(str).str.split('.').str[0]
+
+print(texas_closures_by_zip)
+```
+
+
 2. 
+```{python}
+zips_texas = zips_texas.merge(
+    texas_closures_by_zip, left_on='ZCTA5', right_on='ZIP_CD', how='left'
+)
+zips_texas['closure_count'] = zips_texas['closure_count'].fillna(0)
+print(zips_texas.head())
+
+fig, ax = plt.subplots(figsize=(14, 14))
+zips_texas.plot(
+    column='closure_count',
+    cmap='Reds',
+    linewidth=0.8,
+    ax=ax,
+    edgecolor='0.6',
+    legend=True,
+    legend_kwds={'label': "Number of Closures", 'orientation': "horizontal"}
+)
+ax.set_title('Texas zip codes directly affected by a closure in 2016-2019', fontsize=15)
+ax.set_axis_off()
+plt.show()
+
+directly_affected_zips = texas_closures_by_zip['ZIP_CD'].nunique()
+print(f"Number of Directly Affected Zip Codes in Texas: {directly_affected_zips}")
+```
+
+
 3. 
+```{python}
+directly_affected = zips_texas.merge(
+    texas_closures_by_zip, left_on='ZCTA5', right_on='ZIP_CD', how='inner'
+)
+print(directly_affected)
+
+buffer_distance_meters = 10 / 0.000621371
+
+directly_affected_centroids = zips_texas_centroids[
+    zips_texas_centroids['ZCTA5'].isin(texas_closures_by_zip['ZIP_CD'])
+]
+directly_affected_centroids['buffer'] = directly_affected_centroids.geometry.buffer(buffer_distance_meters)
+
+indirectly_affected = gpd.sjoin(
+    zips_texas_centroids,
+    directly_affected_centroids.set_geometry('buffer'),
+    how='inner',
+    predicate='intersects'
+)
+
+indirectly_affected = indirectly_affected[
+    ~indirectly_affected['ZCTA5_left'].isin(directly_affected['ZCTA5'])
+]
+print("Columns in indirectly_affected:", indirectly_affected.columns)
+
+indirectly_affected_count = indirectly_affected['ZCTA5_left'].nunique()
+print(f"The number of directly affected zip codes in Texas：{indirectly_affected_count}")
+```
+
+
 4. 
+```{python}
+zips_texas['impact_category'] = 'Not Affected'
+
+zips_texas.loc[
+    zips_texas['ZCTA5'].isin(directly_affected['ZCTA5']), 'impact_category'
+] = 'Directly Affected'
+
+zips_texas.loc[
+    zips_texas['ZCTA5'].isin(indirectly_affected['ZCTA5_left']), 
+    'impact_category'
+] = "Indirectly Affected"
+
+fig, ax = plt.subplots(figsize=(14, 14))
+zips_texas.plot(
+    column='impact_category',
+    cmap='Set2',
+    linewidth=1.5,
+    ax=ax,
+    edgecolor='0.6',
+    legend=True,
+    legend_kwds={'title': "Impact Category", 'fontsize': 'large', 'title_fontsize': '15'}
+)
+ax.set_title('Impact of Hospital Closures on Texas Zip Codes', fontsize=15)
+ax.set_axis_off()
+plt.show()
+```
+
 
 ## Reflecting on the exercise (10 pts) 
+
+Partner_1:
+
+The "first-pass" method, which removes suspected closures in zip codes where the number of active hospitals does not decrease the year after the suspected closure, is a helpful starting point. However, it has some limitations.
+
+Hospital data might not be fully updated in the following year. Some hospitals may actually be closed while having a late report, leading to an unchanged active hospitals number. There are also cases where hospitals relocate like moving in to or out from a particular zip code area while keeping the same total number. Consolidating and seperating could also happen at the same time while the total number of active hospitals might remain unchanged.
+
+Ways to do better can be tracking hospitals for two to three more years before confirming a closure. This allows enough time for data to be updated and corrected, giving a more accurate picture of real changes. Cross checking CMS and specific address or geographic coordinates rather than just counting hospitals in the zip code or use CMS seperately. By observing exact locations and CMS at same time, we could identify hospitals that have moved or merged.
+
+
+Partner_2:   
+
+ZIP codes with at least one hospital closure between 2016 and 2019 are the most directly impacted outcomes. Here we begin by computationally ignoring follow-up in subsequent years of closure, and also defaulting to the idea that hospital closures within a given ZIP code mean fewer visits for residents.  
+
+The current methodology has limitations, such as the fact that distance effectively ignores the population density of the corresponding area in English: zip code areas vary widely in size and population density. Some areas may have a large number of residents, while others are relatively empty. Using zip codes alone to delineate areas may mask the actual distribution of health care needs and resources.  
+
+Improvements can be made by considering a combination of factors: for example, when assessing accessibility to hospitals, taking into account the distribution of populations and residential areas, transportation networks, and public transportation options (which are often included in geographic data as well) can provide a more complete picture of how residents actually travel to hospitals.  
