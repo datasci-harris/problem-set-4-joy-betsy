@@ -356,9 +356,11 @@ def cal_nearest_distance(row, df):
     nearest_geom = nearest_points(row['centroid'], df.unary_union)[1]
     return row['centroid'].distance(nearest_geom)
 
-subset_zips['nearest_distance'] = subset_zips.apply(cal_nearest_distance,
-                                                    df=zips_withhospital_centroids,
-                                                    axis=1)
+subset_zips['nearest_distance'] = subset_zips.apply(
+    cal_nearest_distance,
+    df=zips_withhospital_centroids,
+    axis=1
+)
 
 end_time = time.time()
 
@@ -373,9 +375,11 @@ print(f"Time taken (all): {time_all} seconds")
 ```{python}
 start_time_b = time.time()
 
-zips_texas_centroids['nearest_distance'] = zips_texas_centroids.apply(cal_nearest_distance,
-                                                                      df = zips_withhospital_centroids,
-                                                                      axis = 1)
+zips_texas_centroids['nearest_distance'] = zips_texas_centroids.apply(
+    cal_nearest_distance,
+    df=zips_withhospital_centroids,
+    axis=1
+)
 
 end_time_b = time.time()
 
@@ -392,19 +396,13 @@ UNIT["Degree",0.017453292519943295] indicates that the unit is degree (latitude 
 zips_texas_centroids = zips_texas_centroids.to_crs(epsg=32614)
 zips_withhospital_centroids = zips_withhospital_centroids.to_crs(epsg=32614)
 
-start_time_projected = time.time()
-
 zips_texas_centroids['nearest_distance_meters'] = zips_texas_centroids.apply(
     cal_nearest_distance,
     df=zips_withhospital_centroids,
     axis=1
 )
 
-end_time_projected = time.time()
-
-time_projected = end_time_projected - start_time_projected
-print(f"Time taken with projected data: {time_projected / 60:.2f} minutes")
-zips_texas_centroids['nearest_distance_miles'] = zips_texas_centroids['nearest_distance'] * 0.000621371
+zips_texas_centroids['nearest_distance_miles'] = zips_texas_centroids['nearest_distance_meters'] * 0.000621371
 print(zips_texas_centroids[['ZCTA5', 'nearest_distance_miles']].head())
 ```
 
@@ -429,8 +427,14 @@ https://www.aha.org/news/headline/2018-12-14-study-rural-residents-travel-about-
 
     c.
 ```{python}
+zips_texas = zips_texas.merge(
+    zips_texas_centroids[['ZCTA5', 'nearest_distance_miles']],
+    on='ZCTA5',
+    how='left'
+)
+
 fig, ax = plt.subplots(figsize=(14, 14))
-zips_texas_centroids.plot(
+zips_texas.plot(
     column='nearest_distance_miles',
     cmap='Blues',
     linewidth=0.8,
