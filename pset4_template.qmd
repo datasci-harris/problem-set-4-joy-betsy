@@ -30,7 +30,7 @@ Please refer to the minilesson on code style
     - Partner 1 (name and cnet ID): Betsy Shi
     - Partner 2 (name and cnet ID): Joy Wu
 3. Partner 1 will accept the `ps4` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
-4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*\_\_\*\* \*\*\_\_\*\*
+4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: BS JW
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
 6. Late coins used this pset: 1 Late coins left after submission: 2
 7. Knit your `ps4.qmd` to an PDF file to make `ps4.pdf`, 
@@ -476,7 +476,7 @@ print(zips_texas.head())
 fig, ax = plt.subplots(figsize=(14, 14))
 zips_texas.plot(
     column='closure_count',
-    cmap='Reds',
+    cmap='Blues',
     linewidth=0.8,
     ax=ax,
     edgecolor='0.6',
