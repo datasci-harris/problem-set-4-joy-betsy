@@ -335,7 +335,6 @@ hospitals_per_zip.columns = ['ZIP_CD', 'hospital_count']
 hospitals_per_zip['ZIP_CD'] = hospitals_per_zip['ZIP_CD'].astype(str).str.replace('.0', '', regex=False)
 zips_texas_borderstates_centroids['ZCTA5'] = zips_texas_borderstates_centroids['ZCTA5'].astype(str).str.replace('.0', '', regex=False)
 
-
 zips_withhospital_centroids = zips_texas_borderstates_centroids.merge(hospitals_per_zip, left_on = 'ZCTA5', right_on = 'ZIP_CD', how = 'left').fillna(0)
 zips_withhospital_centroids = zips_withhospital_centroids[zips_withhospital_centroids['hospital_count'] >= 1]
 
@@ -450,7 +449,7 @@ plt.show()
 1. 
 ```{python}
 texas_closures = valid_sorted_closed[
-    valid_sorted_closed['ZIP_CD'].astype(str).str.startswi(texas_prefixes)
+    valid_sorted_closed['ZIP_CD'].astype(str).str.startswith(texas_prefixes)
 ]
 
 texas_closures_by_zip = texas_closures.groupby('ZIP_CD').size().reset_index(name='closure_count')
@@ -467,6 +466,7 @@ zips_texas = zips_texas.merge(
     texas_closures_by_zip, left_on='ZCTA5', right_on='ZIP_CD', how='left'
 )
 zips_texas['closure_count'] = zips_texas['closure_count'].fillna(0)
+zips_texas = zips_texas.drop(columns=['ZIP_CD_x', 'ZIP_CD_y'])
 print(zips_texas.head())
 
 fig, ax = plt.subplots(figsize=(14, 14))
@@ -500,6 +500,7 @@ buffer_distance_meters = 10 / 0.000621371
 directly_affected_centroids = zips_texas_centroids[
     zips_texas_centroids['ZCTA5'].isin(texas_closures_by_zip['ZIP_CD'])
 ]
+
 directly_affected_centroids['buffer'] = directly_affected_centroids.geometry.buffer(buffer_distance_meters)
 
 indirectly_affected = gpd.sjoin(
@@ -536,7 +537,7 @@ fig, ax = plt.subplots(figsize=(14, 14))
 zips_texas.plot(
     column='impact_category',
     cmap='Set2',
-    linewidth=1.5,
+    linewidth=0.1,
     ax=ax,
     edgecolor='0.6',
     legend=True,
